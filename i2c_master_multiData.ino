@@ -2,6 +2,7 @@
 #include <Wire.h>
 #define ANALOG_NUM 3
 #define TOTAL_ANALOG_NUM ANALOG_NUM * 2
+#define Threshold 10
 
 //能動入力が0~2, 受動入力が3~5
 int masterVal[ANALOG_NUM];
@@ -20,6 +21,8 @@ float a = 0.9;
 int filteredVal[TOTAL_ANALOG_NUM][2] = {0}; //0~255
 int maxVal[TOTAL_ANALOG_NUM] = {0}; //0~255
 int minVal[TOTAL_ANALOG_NUM] = {0}; //0~255
+int neutralVal = 50;
+//int neutralVal[TOTAL_ANALOG_NUM] = {50};//*rate*0~100
 
 #define RESOLUSION 100
 int rate[TOTAL_ANALOG_NUM] = {0}; //0~100
@@ -27,6 +30,7 @@ int rate[TOTAL_ANALOG_NUM] = {0}; //0~100
 int PWM[ANALOG_NUM] = {0};
 bool bDeform[TOTAL_ANALOG_NUM] = {false};
 bool bPolarity[TOTAL_ANALOG_NUM] = {false};
+bool bNeutral[TOTAL_ANALOG_NUM] = {false};
 
 #define LED 8
 #define SW 7
@@ -110,7 +114,9 @@ void loop() {
   //  Serial.print(rate[3]);
   //  Serial.print(" slave2: ");
   //  Serial.print(rate[4]);
-  //  Serial.print(" slave3: ");
+  //  Serial.print(" bDeform: ");
+  //  Serial.print(bDeform[5]);
+  //  Serial.print(", slave3: ");
   //  Serial.println(rate[5]);
 
   /*--to openFrameWorks--*/
@@ -205,7 +211,7 @@ void fbJudge(int teacher, int child) { //目標値，センサー値
 
   setPWM_PID(p, 0, 0, child);
 
-  if (absDelta[teacher] >= 1) {
+  if (absDelta[teacher] >= Threshold) {
     bDeform[teacher] = true;
   } else {
     bDeform[teacher] = false;
@@ -213,31 +219,43 @@ void fbJudge(int teacher, int child) { //目標値，センサー値
 
   if (delta[teacher][1] > 0) {
     bPolarity[teacher] = true;
-  }
-  else if (delta[teacher][1] < 0) {
+  } else if (delta[teacher][1] < 0) {
     bPolarity[teacher] = false;
+  }
+
+  if (neutralVal - 5 < rate[teacher] && rate[teacher] < neutralVal + 5) { //45~ 55のとき
+    bNeutral[teacher] = true;
+  } else {
+    bNeutral[teacher] = false;
   }
 }
 
 int setPWM_PID(int p, int i, int d, int number) {
   //pwmに変換
   PWM[number] = abs(p + i + d);
-  if (PWM[number] < 100){
+  if (PWM[number] < 100) {
     PWM[number] = 0;
+  } else if (PWM[number] >= 255) {
+    PWM[number] = 255;
   }
   return PWM[number];
 }
 
 void fbOutput(int teacher, int child) {
-  if (bDeform[teacher] == true) { // 偏差があるかどうか
-    if (bPolarity[teacher] == true) { //正負の判定
-      sendDigitalSupply(child, PWM[child]);
-    } else {
-      sendDigitalVacuum(child, PWM[child]);
-    }
+  if (bNeutral[teacher] == true) { //ニュートラルかどうか
+    sendDigitalExhaust(child);
   } else {
-    sendDigitalClose(child);
+    if (bDeform[teacher] == true) { // 偏差があるかどうか
+      if (bPolarity[teacher] == true) { //正負の判定
+        sendDigitalSupply(child, PWM[child]);
+      } else {
+        sendDigitalVacuum(child, PWM[child]);
+      }
+    } else {
+      sendDigitalClose(child);
+    }
   }
+
 }
 
 //--------------------------------------
