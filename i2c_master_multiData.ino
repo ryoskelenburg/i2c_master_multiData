@@ -18,14 +18,14 @@ bool fromOfData = false;
 int fromOfByte;
 
 float a = 0.9;
-int filteredVal[TOTAL_ANALOG_NUM][2] = {0}; //0~255
+int filteredVal[TOTAL_ANALOG_NUM][2]; //0~255
 int maxVal[TOTAL_ANALOG_NUM] = {0}; //0~255
-int minVal[TOTAL_ANALOG_NUM] = {0}; //0~255
+int minVal[TOTAL_ANALOG_NUM] = {255}; //0~255
 int neutralVal = 50;
 //int neutralVal[TOTAL_ANALOG_NUM] = {50};//*rate*0~100
 
 #define RESOLUSION 100
-int rate[TOTAL_ANALOG_NUM] = {0}; //0~100
+int rate[TOTAL_ANALOG_NUM]; //0~100
 
 int PWM[ANALOG_NUM] = {0};
 bool bDeform[TOTAL_ANALOG_NUM] = {false};
@@ -38,6 +38,11 @@ boolean bLed = false;
 boolean bRealtime = false;
 int swVal = 0;
 int oldSwVal = 0;
+
+#define RE 4
+boolean bReset = false;
+int reVal = 0;
+int oldReVal = 0;
 
 //PID
 int delta[TOTAL_ANALOG_NUM][2] = {{0}, {0}};
@@ -57,6 +62,7 @@ void setup() {
 
   pinMode(LED, OUTPUT);
   pinMode(SW, INPUT);
+  pinMode(RE, INPUT);
 
   for (int i = 0; i < ANALOG_NUM; i++) {
     pinMode(pumpSupplyPin[i], OUTPUT);
@@ -104,20 +110,24 @@ void loop() {
     adjustData(i);
   }
 
-  //  Serial.print("master1: ");
-  //  Serial.print(rate[0]);
-  //  Serial.print(" master2: ");
-  //  Serial.print(rate[1]);
-  //  Serial.print(" master3: ");
-  //  Serial.print(rate[2]);
-  //  Serial.print(" slave1: ");
-  //  Serial.print(rate[3]);
-  //  Serial.print(" slave2: ");
-  //  Serial.print(rate[4]);
-  //  Serial.print(" bDeform: ");
-  //  Serial.print(bDeform[5]);
-  //  Serial.print(", slave3: ");
-  //  Serial.println(rate[5]);
+  //    Serial.print("master1: ");
+  //    Serial.print(rate[0]);
+  //    Serial.print(", master2: ");
+  //    Serial.print(rate[1]);
+  //    Serial.print(", master3: ");
+  //    Serial.print(rate[2]);
+  Serial.print("slave1Analog: ");
+  Serial.print(filteredVal[3][1]);
+  Serial.print(", slave1: ");
+  Serial.print(rate[3]);
+  Serial.print(", min: ");
+  Serial.print(minVal[3]);
+  Serial.print(", max: ");
+  Serial.println(maxVal[3]);
+  //    Serial.print(", slave2: ");
+  //    Serial.print(rate[4]);
+  //    Serial.print(", slave3: ");
+  //    Serial.println(rate[5]);
 
   /*--to openFrameWorks--*/
 
@@ -136,13 +146,14 @@ void loop() {
     //    }
 
     for (int i = 0; i < TOTAL_ANALOG_NUM; i++) {
-      Serial.write(rate[i]);
+      //Serial.write(rate[i]);
     }
     //    }
     Serial.read();
   }
 
   switchPlay();//スイッチ
+  switchReset();//値のリセット
   workRealtime();//
 
   for (int i = 0; i < TOTAL_ANALOG_NUM; i++) { //値の更新
@@ -179,6 +190,17 @@ void switchPlay() {
     digitalWrite(LED, HIGH);
   } else {
     digitalWrite(LED, LOW);
+  }
+}
+
+void switchReset() {
+  reVal = digitalRead(RE);
+
+  if (reVal == HIGH) {
+    for (int i =0; i < TOTAL_ANALOG_NUM; i++){
+      minVal[i] = {127};
+      maxVal[i] = {127};
+    }
   }
 }
 
