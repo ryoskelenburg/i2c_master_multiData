@@ -37,7 +37,7 @@ bool bNeutral[TOTAL_ANALOG_NUM] = {false};
 boolean bLed = false;
 boolean bRealtime = false;
 int swVal = 0;
-int oldSwVal = 0;
+int swCount = 0;
 
 #define RE 4
 boolean bReset = false;
@@ -116,14 +116,14 @@ void loop() {
   //    Serial.print(rate[1]);
   //    Serial.print(", master3: ");
   //    Serial.print(rate[2]);
-  Serial.print("slave1Analog: ");
-  Serial.print(filteredVal[3][1]);
-  Serial.print(", slave1: ");
-  Serial.print(rate[3]);
-  Serial.print(", min: ");
-  Serial.print(minVal[3]);
-  Serial.print(", max: ");
-  Serial.println(maxVal[3]);
+  //  Serial.print("slave1Analog: ");
+  //  Serial.print(filteredVal[3][1]);
+  //  Serial.print(", slave1: ");
+  //  Serial.print(rate[3]);
+  //  Serial.print(", min: ");
+  //  Serial.print(minVal[3]);
+  //  Serial.print(", max: ");
+  //  Serial.println(maxVal[3]);
   //    Serial.print(", slave2: ");
   //    Serial.print(rate[4]);
   //    Serial.print(", slave3: ");
@@ -146,7 +146,7 @@ void loop() {
     //    }
 
     for (int i = 0; i < TOTAL_ANALOG_NUM; i++) {
-      //Serial.write(rate[i]);
+      Serial.write(rate[i]);
     }
     //    }
     Serial.read();
@@ -179,25 +179,31 @@ void adjustData(int _number) {
 void switchPlay() {
   swVal = digitalRead(SW);
 
-  if (swVal == HIGH && oldSwVal == LOW) {
-    bRealtime = !bRealtime;
-    bLed = !bLed;
+  if (swVal == HIGH) {
+    swCount += 1;
+  } else {
+    swCount = 0;
   }
 
-  oldSwVal = swVal;
+  if (swCount == 10) {
+    bLed = !bLed;
+    bRealtime = !bRealtime;
+  }
 
   if (bLed) {
     digitalWrite(LED, HIGH);
   } else {
     digitalWrite(LED, LOW);
   }
+
+  delay(1);
 }
 
 void switchReset() {
   reVal = digitalRead(RE);
 
   if (reVal == HIGH) {
-    for (int i =0; i < TOTAL_ANALOG_NUM; i++){
+    for (int i = 0; i < TOTAL_ANALOG_NUM; i++) {
       minVal[i] = {127};
       maxVal[i] = {127};
     }
