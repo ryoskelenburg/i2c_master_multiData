@@ -1,8 +1,20 @@
+/* !!!read me!!!
+
+    neutralVal +- 5 で閾値を設定し，ニュートラル時には全アクチュエータを解放する．
+    sleepTime でスリープ時間を設定し，スリープ時には全アクチュエータを解放する．(不要？)
+    変換関数
+
+
+*/
+
+
+
+
 //masterの書き込みスケッチ
 #include <Wire.h>
 #define ANALOG_NUM 3
 #define TOTAL_ANALOG_NUM ANALOG_NUM * 2
-#define Threshold 10
+#define Threshold 5
 
 //能動入力が0~2, 受動入力が3~5
 int masterVal[ANALOG_NUM];
@@ -44,14 +56,18 @@ boolean bReset = false;
 int reVal = 0;
 int oldReVal = 0;
 
+int sleepMillis = 5;
+unsigned long elapsedMillis = 0;
+
 //PID
 int delta[TOTAL_ANALOG_NUM][2] = {{0}, {0}};
 int absDelta[TOTAL_ANALOG_NUM] = {0};
-float dt = 100 / 3;
+float dt = 0; //処理周期
+float preTime;
 float integral;
-float KP = 7.0; //Pゲイン
-float KI = 0.0; //Iゲイン
-float KD = 0.1; //Dゲイン
+float KP = 6.0; //Pゲイン
+float KI = 10.0; //Iゲイン
+float KD = 1.0; //Dゲイン
 float p = 0.0;
 float i = 0.0;
 float d = 0.0;
@@ -77,6 +93,8 @@ void setup() {
     digitalWrite(valveSupplyPin[i], LOW);
     digitalWrite(valveVacuumPin[i], LOW);
   }
+
+  preTime = millis();
 }
 
 
@@ -110,24 +128,24 @@ void loop() {
     adjustData(i);
   }
 
-  //    Serial.print("master1: ");
-  //    Serial.print(rate[0]);
-  //    Serial.print(", master2: ");
-  //    Serial.print(rate[1]);
-  //    Serial.print(", master3: ");
-  //    Serial.print(rate[2]);
-  //  Serial.print("slave1Analog: ");
-  //  Serial.print(filteredVal[3][1]);
-  //  Serial.print(", slave1: ");
-  //  Serial.print(rate[3]);
-  //  Serial.print(", min: ");
-  //  Serial.print(minVal[3]);
-  //  Serial.print(", max: ");
-  //  Serial.println(maxVal[3]);
-  //    Serial.print(", slave2: ");
-  //    Serial.print(rate[4]);
-  //    Serial.print(", slave3: ");
-  //    Serial.println(rate[5]);
+  //      Serial.print("master1: ");
+  //      Serial.print(rate[0]);
+  //      Serial.print(", master2: ");
+  //      Serial.print(rate[1]);
+  //      Serial.print(", master3: ");
+  //      Serial.print(rate[2]);
+  //    Serial.print("slave1Analog: ");
+  //    Serial.print(filteredVal[3][1]);
+  //    Serial.print(", slave1: ");
+  //    Serial.print(rate[3]);
+  //    Serial.print(", min: ");
+  //    Serial.print(minVal[3]);
+  //    Serial.print(", max: ");
+  //    Serial.println(maxVal[3]);
+  //      Serial.print(", slave2: ");
+  //      Serial.print(rate[4]);
+  //      Serial.print(", slave3: ");
+  //      Serial.println(rate[5]);
 
   /*--to openFrameWorks--*/
 
@@ -168,12 +186,26 @@ void adjustData(int _number) {
   filteredVal[_number][1] = a * filteredVal[_number][0] + (1 - a) * analogVal[_number]; //フィルタリング
   rate[_number] = map(filteredVal[_number][1], minVal[_number], maxVal[_number], RESOLUSION, 0); //マッピング
 
+  mappingUp(_number);
+
   if (filteredVal[_number][1] > maxVal[_number]) { //最大値
     maxVal[_number] = filteredVal[_number][1];
   }
   if (filteredVal[_number][1] < minVal[_number]) { //最小値
     minVal[_number] = filteredVal[_number][1];
   }
+}
+
+int mappingDown(int number) { //下方修正
+  float mapGain = .2;//0~1.0
+  rate[number] = mapGain * rate[number] + ((1 - mapGain) * 0.01) * pow(rate[number], 2);
+  return rate[number];
+}
+
+int mappingUp(int number) { //上方修正
+  float mapGain = .1;//0~1.0
+  rate[number] = (1 + mapGain) * rate[number] - (0.01 * mapGain) * pow(rate[number], 2);
+  return rate[number];
 }
 
 void switchPlay() {
@@ -225,6 +257,8 @@ void workRealtime() {
 }
 
 void fbJudge(int teacher, int child) { //目標値，センサー値
+  dt = 100 / 3;
+
   delta[teacher][0] = delta[teacher][1]; //過去の偏差を格納
 
   delta[teacher][1] = rate[teacher] - rate[child]; //**偏差の更新**
@@ -237,7 +271,9 @@ void fbJudge(int teacher, int child) { //目標値，センサー値
   i = KI * integral;
   d = KD * dd / dt;
 
-  setPWM_PID(p, 0, 0, child);
+  setPWM_PID(p, 0, d, child);
+
+  //Serial.println(PWM[child]);
 
   if (absDelta[teacher] >= Threshold) {
     bDeform[teacher] = true;
@@ -256,12 +292,13 @@ void fbJudge(int teacher, int child) { //目標値，センサー値
   } else {
     bNeutral[teacher] = false;
   }
+
 }
 
 int setPWM_PID(int p, int i, int d, int number) {
   //pwmに変換
   PWM[number] = abs(p + i + d);
-  if (PWM[number] < 100) {
+  if (PWM[number] < 80) {
     PWM[number] = 0;
   } else if (PWM[number] >= 255) {
     PWM[number] = 255;
