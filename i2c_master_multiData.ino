@@ -50,6 +50,9 @@ int slaveStatus = 0;
 int sendSwitch = 0;
 int receiveSwitch = 0;
 
+int oldBLed = 0;
+int booleanDelta = 0;
+
 #define RE 4
 boolean bReset = false;
 int reVal = 0;
@@ -107,8 +110,10 @@ void loop() {
     Wire.write(analogVal[i]);
   }
   Wire.write(bLed);//自分のステータス
-  if (bLed == true && slaveStatus == 1) { //masterがon, かつslaveもonの時,slaveをoffにする
+  if (booleanDelta == -1 && slaveStatus == 1) { //masterがon, かつslaveもonの時,slaveをoffにする
     sendSwitch = 3;
+  } else {
+    sendSwitch = 0;
   }
   Wire.write(sendSwitch);//相手のスイッチ
   Wire.endTransmission();
@@ -189,6 +194,9 @@ void loop() {
   for (int i = 0; i < TOTAL_ANALOG_NUM; i++) { //値の更新
     filteredVal[i][0] = filteredVal[i][1];
   }
+
+  booleanDelta = oldBLed - (int)bLed;
+  oldBLed = (int)bLed;
 
   delay(100 / 3);
 }
