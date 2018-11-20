@@ -3,12 +3,7 @@
     neutralVal +- 5 で閾値を設定し，ニュートラル時には全アクチュエータを解放する．
     sleepTime でスリープ時間を設定し，スリープ時には全アクチュエータを解放する．(不要？)
     変換関数
-
-
 */
-
-
-
 
 //masterの書き込みスケッチ
 #include <Wire.h>
@@ -50,14 +45,15 @@ boolean bLed = false;
 boolean bRealtime = false;
 int swVal = 0;
 int swCount = 0;
+//int bPartnerSwitch = 1;
+int slaveStatus = 0;
+int sendSwitch = 0;
+int receiveSwitch = 0;
 
 #define RE 4
 boolean bReset = false;
 int reVal = 0;
 int oldReVal = 0;
-
-int sleepMillis = 5;
-unsigned long elapsedMillis = 0;
 
 //PID
 int delta[TOTAL_ANALOG_NUM][2] = {{0}, {0}};
@@ -106,20 +102,27 @@ void loop() {
     analogVal[i] = analogRead(i) / 4;
   }
 
-  Wire.beginTransmission(8); //データの通信開始，引数:slaveのアドレス(2,10,16進数なんでもいい)
+  Wire.beginTransmission(8);
   for (int i = 0; i < 3; i++) {
     Wire.write(analogVal[i]);
   }
-  Wire.endTransmission();//データの送信，完了
+  Wire.write(bLed);//自分のステータス
+  if (bLed == true && slaveStatus == 1) { //masterがon, かつslaveもonの時,slaveをoffにする
+    sendSwitch = 3;
+  }
+  Wire.write(sendSwitch);//相手のスイッチ
+  Wire.endTransmission();
 
 
   /*--from slave--*/
 
-  Wire.requestFrom(8, 3, true);
-  if ( Wire.available() > 2 ) {
+  Wire.requestFrom(8, 5, true);
+  if ( Wire.available() > 3 ) {
     analogVal[3] = Wire.read();
     analogVal[4] = Wire.read();
     analogVal[5] = Wire.read();
+    slaveStatus = Wire.read(); //相手のステータス
+    receiveSwitch = Wire.read(); //スイッチの受信
   }
 
   /*--function--*/
@@ -174,6 +177,15 @@ void loop() {
   switchReset();//値のリセット
   workRealtime();//
 
+  Serial.print("bLed: ");
+  Serial.print(bLed);
+  Serial.print(", receiveVal: ");
+  Serial.println(receiveSwitch);
+
+  if (receiveSwitch == 3) {
+    bLed = !bLed;
+  }
+
   for (int i = 0; i < TOTAL_ANALOG_NUM; i++) { //値の更新
     filteredVal[i][0] = filteredVal[i][1];
   }
@@ -224,6 +236,7 @@ void switchPlay() {
 
   if (bLed) {
     digitalWrite(LED, HIGH);
+
   } else {
     digitalWrite(LED, LOW);
   }
@@ -320,7 +333,6 @@ void fbOutput(int teacher, int child) {
       sendDigitalClose(child);
     }
   }
-
 }
 
 //--------------------------------------
