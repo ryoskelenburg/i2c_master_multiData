@@ -45,7 +45,6 @@ boolean bLed = false;
 boolean bRealtime = false;
 int swVal = 0;
 int swCount = 0;
-//int bPartnerSwitch = 1;
 int slaveStatus = 0;
 int sendSwitch = 0;
 int receiveSwitch = 0;
@@ -99,36 +98,21 @@ void setup() {
 
 void loop() {
 
-  /*--to slave--*/
-
   for (int i = 0; i < ANALOG_NUM; i++) {
     analogVal[i] = analogRead(i) / 4;
   }
 
-  Wire.beginTransmission(8);
-  for (int i = 0; i < 3; i++) {
-    Wire.write(analogVal[i]);
-  }
-  Wire.write(bLed);//自分のステータス
-  if (booleanDelta == -1 && slaveStatus == 1) { //masterがon, かつslaveもonの時,slaveをoffにする
-    sendSwitch = 3;
-  } else {
-    sendSwitch = 0;
-  }
-  Wire.write(sendSwitch);//相手のスイッチ
-  Wire.endTransmission();
-
-
   /*--from slave--*/
 
   Wire.requestFrom(8, 5, true);
-  if ( Wire.available() > 3 ) {
+  if ( Wire.available() > 4 ) {
     analogVal[3] = Wire.read();
     analogVal[4] = Wire.read();
     analogVal[5] = Wire.read();
     slaveStatus = Wire.read(); //相手のステータス
     receiveSwitch = Wire.read(); //スイッチの受信
   }
+
 
   /*--function--*/
 
@@ -144,16 +128,18 @@ void loop() {
   //      Serial.print(rate[2]);
   //    Serial.print("slave1Analog: ");
   //    Serial.print(filteredVal[3][1]);
-  //    Serial.print(", slave1: ");
-  //    Serial.print(rate[3]);
-  //    Serial.print(", min: ");
-  //    Serial.print(minVal[3]);
-  //    Serial.print(", max: ");
-  //    Serial.println(maxVal[3]);
-  //      Serial.print(", slave2: ");
-  //      Serial.print(rate[4]);
-  //      Serial.print(", slave3: ");
-  //      Serial.println(rate[5]);
+  //  Serial.print("analog[3]: ");
+  //  Serial.print(analogVal[3]);
+  //  Serial.print("rate[3]: ");
+  //  Serial.print(rate[3]);
+  //  Serial.print(", min: ");
+  //  Serial.print(minVal[3]);
+  //  Serial.print(", max: ");
+  //  Serial.println(maxVal[3]);
+  //          Serial.print(", analog[4]: ");
+  //          Serial.print(analogVal[4]);
+  //          Serial.print(", analog[5]: ");
+  //          Serial.println(analogVal[5]);
 
   /*--to openFrameWorks--*/
 
@@ -178,25 +164,41 @@ void loop() {
     Serial.read();
   }
 
+  /*--to slave--*/
+
+  Wire.beginTransmission(8);
+  //  for (int i = 0; i < 3; i++) {
+  //    Wire.write(analogVal[i]);
+  //  }
+
+  for (int i = 0; i < TOTAL_ANALOG_NUM; i++) {
+    Wire.write(rate[i]);
+  }
+  Wire.write(bLed);//自分のステータス
+  if (booleanDelta == -1 && slaveStatus == 1) { //masterがon, かつslaveもonの時,slaveをoffにする
+    sendSwitch = 3;
+  } else {
+    sendSwitch = 0;
+  }
+  Wire.write(sendSwitch);//相手のスイッチ
+  Wire.endTransmission();
+
+  /*--*/
+
   switchPlay();//スイッチ
   switchReset();//値のリセット
   workRealtime();//
 
-  Serial.print("bLed: ");
-  Serial.print(bLed);
-  Serial.print(", receiveVal: ");
-  Serial.println(receiveSwitch);
-
   if (receiveSwitch == 3) {
     bLed = !bLed;
+    bRealtime = !bRealtime;
   }
+  booleanDelta = oldBLed - (int)bLed;
+  oldBLed = (int)bLed;
 
   for (int i = 0; i < TOTAL_ANALOG_NUM; i++) { //値の更新
     filteredVal[i][0] = filteredVal[i][1];
   }
-
-  booleanDelta = oldBLed - (int)bLed;
-  oldBLed = (int)bLed;
 
   delay(100 / 3);
 }
@@ -257,8 +259,8 @@ void switchReset() {
 
   if (reVal == HIGH) {
     for (int i = 0; i < TOTAL_ANALOG_NUM; i++) {
-      minVal[i] = {127};
-      maxVal[i] = {127};
+      minVal[i] = {255};
+      maxVal[i] = {0};
     }
   }
 }
@@ -293,8 +295,6 @@ void fbJudge(int teacher, int child) { //目標値，センサー値
   d = KD * dd / dt;
 
   setPWM_PID(p, 0, d, child);
-
-  //Serial.println(PWM[child]);
 
   if (absDelta[teacher] >= Threshold) {
     bDeform[teacher] = true;
