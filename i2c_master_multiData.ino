@@ -1,3 +1,4 @@
+/** masterの書き込みスケッチ **/
 /* !!!read me!!!
 
     neutralVal +- 5 で閾値を設定し，ニュートラル時には全アクチュエータを解放する．
@@ -5,7 +6,6 @@
     変換関数
 */
 
-//masterの書き込みスケッチ
 #include <Wire.h>
 #define ANALOG_NUM 3
 #define TOTAL_ANALOG_NUM ANALOG_NUM * 2
@@ -21,23 +21,19 @@ int pumpVacuumPin[ANALOG_NUM] = {5, 9, 11};
 int valveSupplyPin[ANALOG_NUM] = {14, 16, 18};
 int valveVacuumPin[ANALOG_NUM] = {15, 17, 19};
 
-bool fromOfData = false;
-int fromOfByte;
-
-float a = 0.9;
+float a = 0.95;
 int filteredVal[TOTAL_ANALOG_NUM][2]; //0~255
 int maxVal[TOTAL_ANALOG_NUM] = {0}; //0~255
 int minVal[TOTAL_ANALOG_NUM] = {255}; //0~255
 int neutralVal = 50;
-//int neutralVal[TOTAL_ANALOG_NUM] = {50};//*rate*0~100
 
 #define RESOLUSION 100
 int rate[TOTAL_ANALOG_NUM]; //0~100
 
 int PWM[ANALOG_NUM] = {0};
-bool bDeform[TOTAL_ANALOG_NUM] = {false};
-bool bPolarity[TOTAL_ANALOG_NUM] = {false};
-bool bNeutral[TOTAL_ANALOG_NUM] = {false};
+bool bDeform[ANALOG_NUM] = {false};
+bool bPolarity[ANALOG_NUM] = {false};
+bool bNeutral[ANALOG_NUM] = {false};
 
 #define LED 8
 #define SW 7
@@ -45,6 +41,7 @@ boolean bLed = false;
 boolean bRealtime = false;
 int swVal = 0;
 int swCount = 0;
+
 int slaveStatus = 0;
 int sendSwitch = 0;
 int receiveSwitch = 0;
@@ -77,6 +74,9 @@ void setup() {
   pinMode(LED, OUTPUT);
   pinMode(SW, INPUT);
   pinMode(RE, INPUT);
+  digitalWrite(LED, LOW);
+  digitalWrite(SW, LOW);
+  digitalWrite(RE, LOW);
 
   for (int i = 0; i < ANALOG_NUM; i++) {
     pinMode(pumpSupplyPin[i], OUTPUT);
@@ -92,7 +92,6 @@ void setup() {
     digitalWrite(valveVacuumPin[i], LOW);
   }
 
-  preTime = millis();
 }
 
 
@@ -116,61 +115,27 @@ void loop() {
 
   /*--function--*/
 
-  for (int i = 0; i < TOTAL_ANALOG_NUM; i++) { //値のフィルタリング&max,minの更新，rate変換
+  for (int i = 0; i < TOTAL_ANALOG_NUM; i++) { //値のフィルタリング&maxVal,minの更新，rate変換
     adjustData(i);
   }
 
-  //      Serial.print("master1: ");
-  //      Serial.print(rate[0]);
-  //      Serial.print(", master2: ");
-  //      Serial.print(rate[1]);
-  //      Serial.print(", master3: ");
-  //      Serial.print(rate[2]);
-  //    Serial.print("slave1Analog: ");
-  //    Serial.print(filteredVal[3][1]);
-  //  Serial.print("analog[3]: ");
-  //  Serial.print(analogVal[3]);
-  //  Serial.print("rate[3]: ");
-  //  Serial.print(rate[3]);
-  //  Serial.print(", min: ");
-  //  Serial.print(minVal[3]);
-  //  Serial.print(", max: ");
-  //  Serial.println(maxVal[3]);
-  //          Serial.print(", analog[4]: ");
-  //          Serial.print(analogVal[4]);
-  //          Serial.print(", analog[5]: ");
-  //          Serial.println(analogVal[5]);
+  //printRate();
+  printMinMax();
 
   /*--to openFrameWorks--*/
+  //設営終わったら消す
 
   if (Serial.available() > 0) {
-    //    fromOfByte = Serial.read();
-    //    Serial.println(fromOfByte);
-    //    if (fromOfByte == 65) {
-    //      fromOfData == true;
-    //    }
-    //    if (fromOfData == true) {
-    //    for (int i = 0; i < 3; i++) {
-    //      Serial.write(masterVal[i]);
-    //    }
-    //    for (int i = 0; i < 3; i++) {
-    //      Serial.write(slaveVal[i]);
-    //    }
-
     for (int i = 0; i < TOTAL_ANALOG_NUM; i++) {
       Serial.write(rate[i]);
     }
-    //    }
     Serial.read();
   }
 
   /*--to slave--*/
+  
 
   Wire.beginTransmission(8);
-  //  for (int i = 0; i < 3; i++) {
-  //    Wire.write(analogVal[i]);
-  //  }
-
   for (int i = 0; i < TOTAL_ANALOG_NUM; i++) {
     Wire.write(rate[i]);
   }
@@ -186,9 +151,12 @@ void loop() {
   /*--*/
 
   switchPlay();//スイッチ
-  switchReset();//値のリセット
+
   workRealtime();//
 
+  switchReset();//値のリセット
+
+  //切り替えなかったら消す
   if (receiveSwitch == 3) {
     bLed = !bLed;
     bRealtime = !bRealtime;
@@ -225,7 +193,7 @@ int mappingDown(int number) { //下方修正
 }
 
 int mappingUp(int number) { //上方修正
-  float mapGain = .1;//0~1.0
+  float mapGain = .3;//0~1.0
   rate[number] = (1 + mapGain) * rate[number] - (0.01 * mapGain) * pow(rate[number], 2);
   return rate[number];
 }
@@ -242,6 +210,7 @@ void switchPlay() {
   if (swCount == 10) {
     bLed = !bLed;
     bRealtime = !bRealtime;
+    Serial.println("start!!!!");
   }
 
   if (bLed) {
@@ -280,21 +249,21 @@ void workRealtime() {
 }
 
 void fbJudge(int teacher, int child) { //目標値，センサー値
-  dt = 100 / 3;
+  //  dt = 100 / 3;
 
   delta[teacher][0] = delta[teacher][1]; //過去の偏差を格納
 
   delta[teacher][1] = rate[teacher] - rate[child]; //**偏差の更新**
   absDelta[teacher] = abs(delta[teacher][1]); //偏差の絶対値
-  integral += (delta[teacher][1] + delta[teacher][0]) / 2.0 * dt;
+  //  integral += (delta[teacher][1] + delta[teacher][0]) / 2.0 * dt;
 
-  int dd = delta[teacher][1] - delta[teacher][0];//偏差の変化量
+  //int dd = delta[teacher][1] - delta[teacher][0];//偏差の変化量
 
   p = KP * delta[teacher][1]; //定数*偏差(0~100) 255 =  gain * 100
-  i = KI * integral;
-  d = KD * dd / dt;
+  //  i = KI * integral;
+  //  d = KD * dd / dt;
 
-  setPWM_PID(p, 0, d, child);
+  setPWM_PID(p, 0, 0, child);
 
   if (absDelta[teacher] >= Threshold) {
     bDeform[teacher] = true;
@@ -308,7 +277,7 @@ void fbJudge(int teacher, int child) { //目標値，センサー値
     bPolarity[teacher] = false;
   }
 
-  if (neutralVal - 5 < rate[teacher] && rate[teacher] < neutralVal + 5) { //45~ 55のとき
+  if (neutralVal - Threshold < rate[teacher] && rate[teacher] < neutralVal + Threshold) { //45~ 55のとき
     bNeutral[teacher] = true;
   } else {
     bNeutral[teacher] = false;
@@ -319,7 +288,7 @@ void fbJudge(int teacher, int child) { //目標値，センサー値
 int setPWM_PID(int p, int i, int d, int number) {
   //pwmに変換
   PWM[number] = abs(p + i + d);
-  if (PWM[number] < 80) {
+  if (PWM[number] < 50) {
     PWM[number] = 0;
   } else if (PWM[number] >= 255) {
     PWM[number] = 255;
@@ -371,6 +340,78 @@ void sendDigitalExhaust(int number) {
   digitalWrite(valveVacuumPin[number], LOW);
   analogWrite(pumpSupplyPin[number], 0);
   analogWrite(pumpVacuumPin[number], 0);
+}
+
+void printRate() {
+  Serial.print("rate0: ");
+  Serial.print(rate[0]);
+  Serial.print(", rate1: ");
+  Serial.print(rate[1]);
+  Serial.print(", rate2: ");
+  Serial.print(rate[2]);
+  Serial.print("rate3: ");
+  Serial.print(rate[3]);
+  Serial.print(", rate4: ");
+  Serial.print(rate[4]);
+  Serial.print(", rate5: ");
+  Serial.println(rate[5]);
+}
+
+void printMinMax() {
+  Serial.print("[");
+  Serial.print(rate[0]);
+  Serial.print(":");
+  Serial.print(filteredVal[0][1]);
+  Serial.print("]");
+  Serial.print(minVal[0]);
+  Serial.print(" - ");
+  Serial.print(maxVal[0]);
+
+  Serial.print(", [");
+  Serial.print(rate[1]);
+  Serial.print(":");
+  Serial.print(filteredVal[1][1]);
+  Serial.print("]");
+  Serial.print(minVal[1]);
+  Serial.print(" - ");
+  Serial.print(maxVal[1]);
+
+  Serial.print(", [");
+  Serial.print(rate[2]);
+  Serial.print(":");
+  Serial.print(filteredVal[2][1]);
+  Serial.print("]");
+  Serial.print(minVal[2]);
+  Serial.print(" - ");
+  Serial.print(maxVal[2]);
+
+  Serial.print(", [");
+  Serial.print(rate[3]);
+  Serial.print(":");
+  Serial.print(filteredVal[3][1]);
+  Serial.print("]");
+  Serial.print(minVal[3]);
+  Serial.print(" - ");
+  Serial.print(maxVal[3]);
+
+  Serial.print(", [");
+  Serial.print(rate[4]);
+  Serial.print(":");
+  Serial.print(filteredVal[4][1]);
+  Serial.print("]");
+  Serial.print(minVal[4]);
+  Serial.print(" - ");
+  Serial.print(maxVal[4]);
+
+  Serial.print(", [");
+  Serial.print(rate[5]);
+  Serial.print(":");
+  Serial.print(filteredVal[5][1]);
+  Serial.print("]");
+  Serial.print(minVal[5]);
+  Serial.print(" - ");
+  Serial.println(maxVal[5]);
+
 }
 
 
